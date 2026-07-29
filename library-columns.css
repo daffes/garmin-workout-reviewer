@@ -1,6 +1,6 @@
 .activity-table-head,
 .activity-row {
-  grid-template-columns: 92px 58px 96px minmax(90px, 1fr) 78px 72px auto;
+  grid-template-columns: 92px 58px 96px minmax(90px, 1fr) 78px 72px 92px;
   column-gap: 10px;
 }
 
@@ -9,7 +9,8 @@
   padding-right: 12px;
 }
 
-.activity-table-head span:last-child {
+.activity-table-head span:last-child,
+.activity-links {
   text-align: right;
 }
 
@@ -40,7 +41,8 @@
 }
 
 .activity-links {
-  min-width: 62px;
+  width: 92px;
+  min-width: 92px;
 }
 
 .review-editor {
@@ -60,7 +62,7 @@
   .activity-table-head,
   .activity-row {
     min-width: 680px;
-    grid-template-columns: 92px 58px 96px 100px 78px 72px auto;
+    grid-template-columns: 92px 58px 96px 100px 78px 72px 92px;
   }
 
   .activity-list {
