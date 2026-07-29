@@ -1,0 +1,73 @@
+.activity-table-head,
+.activity-row {
+  grid-template-columns: 92px 58px 96px minmax(90px, 1fr) 78px 72px auto;
+  column-gap: 10px;
+}
+
+.activity-table-head {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.activity-table-head span:last-child {
+  text-align: right;
+}
+
+.activity-date,
+.activity-time,
+.activity-distance,
+.activity-duration {
+  white-space: nowrap;
+}
+
+.activity-date,
+.activity-time {
+  font: 700 .76rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #40515d;
+}
+
+.activity-distance,
+.activity-duration {
+  font-size: .82rem;
+  font-weight: 730;
+  color: #31424e;
+}
+
+.activity-sport {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-links {
+  min-width: 62px;
+}
+
+.review-editor {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
+}
+
+.review-check {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  .activity-table-head {
+    display: grid;
+  }
+
+  .activity-table-head,
+  .activity-row {
+    min-width: 680px;
+    grid-template-columns: 92px 58px 96px 100px 78px 72px auto;
+  }
+
+  .activity-list {
+    overflow: auto;
+  }
+
+  .review-editor {
+    grid-template-columns: minmax(240px, 1fr) auto auto;
+  }
+}
