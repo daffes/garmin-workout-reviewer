@@ -2,7 +2,12 @@ const list = document.querySelector("#activity-list");
 
 if (list) {
   decorateRows();
-  new MutationObserver(decorateRows).observe(list, { childList: true, subtree: true });
+
+  // app.js replaces the activity rows as direct children of this container.
+  // Observe only those replacements. Watching the full subtree would make our
+  // own link-text and button updates recursively trigger this observer.
+  const observer = new MutationObserver(() => decorateRows());
+  observer.observe(list, { childList: true });
 
   list.addEventListener("click", (event) => {
     const row = event.target.closest(".activity-card");
@@ -27,7 +32,8 @@ if (list) {
 }
 
 function decorateRows() {
-  for (const row of list.querySelectorAll(".activity-card")) {
+  for (const row of list.querySelectorAll(".activity-card:not([data-compact-decorated])")) {
+    row.dataset.compactDecorated = "true";
     row.tabIndex = 0;
     row.setAttribute("role", "button");
     row.setAttribute("aria-expanded", row.classList.contains("expanded") ? "true" : "false");
@@ -44,7 +50,7 @@ function decorateRows() {
       hasChatLink ||= isChat;
     }
 
-    if (!hasChatLink && !links.querySelector("[data-edit-chat]")) {
+    if (!hasChatLink) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "text-link";
