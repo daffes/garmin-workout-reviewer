@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Parse Garmin FIT files locally in your browser and save the outputs to Google Drive." />
+    <meta name="description" content="Parse Garmin FIT files locally in your browser, save them to Google Drive, and track their ChatGPT reviews." />
     <title>Garmin Workout Reviewer</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -13,14 +13,29 @@
       <header class="hero">
         <p class="eyebrow">IRON MAN TRAINING DATA</p>
         <h1>Garmin FIT → Google Drive</h1>
-        <p class="lede">Your FIT file is decoded in this browser. The app has no database and no workout data is sent to an application server.</p>
+        <p class="lede">Your FIT file is decoded in this browser. The app has no workout database and no workout data is sent to an application server.</p>
       </header>
 
       <section class="panel" aria-labelledby="drive-heading">
-        <div class="section-heading"><div><p class="step">STEP 1</p><h2 id="drive-heading">Connect Google Drive</h2></div><span id="drive-status" class="status neutral">Not connected</span></div>
-        <label for="client-id">Google OAuth web client ID</label>
-        <div class="inline-control"><input id="client-id" type="text" autocomplete="off" spellcheck="false" placeholder="1234567890-abc123.apps.googleusercontent.com" /><button id="connect-drive" class="secondary" type="button">Connect Drive</button></div>
-        <p class="hint">The client ID is not a password. It stays in this browser tab and is used only to request a Google access token.</p>
+        <div class="section-heading">
+          <div><p class="step">STEP 1</p><h2 id="drive-heading">Connect Google Drive</h2></div>
+          <span id="drive-status" class="status neutral">Initializing</span>
+        </div>
+        <p>The Google OAuth client ID is built into the app. After the first authorization, the app remembers that Drive was connected and attempts to restore access silently on later visits.</p>
+        <button id="connect-drive" class="secondary" type="button">Connect Drive</button>
+        <p class="hint">Access tokens are kept only in page memory. The app stores a small local “previously connected” marker, then asks Google for a fresh short-lived token without showing the login screen when possible.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="library-heading">
+        <div class="section-heading">
+          <div><p class="step">LIBRARY</p><h2 id="library-heading">Uploaded activities and reviews</h2></div>
+          <span id="library-status" class="status neutral">Connect Drive</span>
+        </div>
+        <div class="library-toolbar">
+          <p class="hint">After discussing an activity in ChatGPT, copy the conversation URL from your browser and save it here. The app cannot discover the current ChatGPT URL automatically.</p>
+          <button id="refresh-library" class="secondary small" type="button">Refresh</button>
+        </div>
+        <div id="activity-list" class="activity-list"><p class="empty-state">Connect Drive to load activities.</p></div>
       </section>
 
       <section class="panel" aria-labelledby="fit-heading">
@@ -40,7 +55,7 @@
 
       <section id="save-panel" class="panel hidden" aria-labelledby="save-heading">
         <div class="section-heading"><div><p class="step">STEP 4</p><h2 id="save-heading">Save the activity to Drive</h2></div><span id="upload-status" class="status neutral">Ready</span></div>
-        <p>The app will create an app-managed <strong>Iron Man Training Data</strong> folder and an activity subfolder containing the original FIT, analysis-ready JSON, full decoded JSON, and your notes.</p>
+        <p>The app will create an activity subfolder containing the original FIT, analysis JSON, full decoded JSON, notes, and a small manifest used by the activity library.</p>
         <button id="upload-drive" class="primary" type="button">Upload package to Drive</button><p id="drive-result" class="result-link"></p>
       </section>
 
