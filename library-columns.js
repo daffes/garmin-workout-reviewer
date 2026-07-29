@@ -1,6 +1,7 @@
 const list = document.querySelector("#activity-list");
 const header = document.querySelector(".activity-table-head");
 const TOKEN_KEY = "gwr.drive.access-token.v1";
+const PROJECT_URL = "https://chatgpt.com/g/g-p-6a5f5d0e62c08191ad5f73463e7a4e64-iron-man-haines-city/project";
 
 if (header) {
   header.innerHTML = ["Date", "Time", "ID", "Sport", "Distance", "Duration", "Links"]
@@ -11,6 +12,60 @@ if (header) {
 if (list) {
   normalizeRows();
   new MutationObserver(normalizeRows).observe(list, { childList: true });
+}
+
+document.addEventListener("click", handleStartReviewCapture, true);
+
+function handleStartReviewCapture(event) {
+  const button = event.target.closest("[data-start-review]");
+  if (!button) return;
+
+  const row = button.closest(".activity-row");
+  if (!row) return;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+
+  const referenceId = row.querySelector("[data-copy-reference]")?.dataset.copyReference
+    || row.dataset.referenceId
+    || "unknown GWR activity";
+  const folderId = row.dataset.folderId || "";
+  const driveUrl = row.querySelector('.activity-links a[href*="drive.google.com/drive/folders/"]')?.href
+    || (folderId ? `https://drive.google.com/drive/folders/${folderId}` : "");
+  const prompt = buildReviewPrompt(referenceId, driveUrl);
+
+  const originalLabel = button.textContent;
+  button.textContent = "Opening…";
+  window.open(PROJECT_URL, "_blank", "noopener");
+
+  navigator.clipboard.writeText(prompt)
+    .then(() => {
+      button.textContent = "Prompt copied";
+    })
+    .catch(() => {
+      button.textContent = "Copy failed";
+      window.prompt("Copy this review prompt:", prompt);
+    })
+    .finally(() => {
+      setTimeout(() => { button.textContent = originalLabel; }, 1400);
+    });
+}
+
+function buildReviewPrompt(referenceId, driveUrl) {
+  return [
+    "Review this Garmin Workout Reviewer activity using the Iron Man Haines City project context.",
+    "",
+    `Activity reference: ${referenceId}`,
+    `Google Drive activity folder: ${driveUrl}`,
+    "",
+    "Required workflow:",
+    "1. Treat the GWR-* value as an internal Garmin Workout Reviewer activity ID, not as a public Garmin, Strava, Instagram, or web code.",
+    "2. Do not search the web or File Library for this ID.",
+    "3. Use the Google Drive connector and open the exact activity-folder URL above.",
+    "4. Read activity-manifest.json, athlete-notes.md, and the *.analysis.json file in that folder. Use *.decoded-full.json only when the analysis file lacks a needed detail.",
+    "5. Apply my reusable Ironman workout-review method and evaluate execution, physiology, technique, relation to my current benchmarks, and the next training decision.",
+    "6. Do not ask me to upload the activity again unless the Drive folder genuinely cannot be opened.",
+  ].join("\n");
 }
 
 function normalizeRows() {
