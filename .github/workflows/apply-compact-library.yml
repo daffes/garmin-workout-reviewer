@@ -1,0 +1,336 @@
+name: Apply compact activity library update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-compact-library.yml
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  update-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Patch app
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          app = Path("app.js")
+          s = app.read_text()
+
+          s = s.replace(
+              'const CONNECTED_KEY = "gwr.drive.connected";\nconst MANIFEST_NAME = "activity-manifest.json";',
+              'const CONNECTED_KEY = "gwr.drive.connected";\nconst TOKEN_KEY = "gwr.drive.access-token.v1";\nconst TOKEN_MARGIN_MS = 60_000;\nconst MANIFEST_NAME = "activity-manifest.json";',
+          )
+          s = s.replace(
+              'el.activityList.onclick = handleLibraryClick;\n',
+              'el.activityList.onclick = handleLibraryClick;\nel.activityList.onkeydown = handleLibraryKeydown;\n',
+          )
+
+          old = '''async function boot() {
+            note("Initializing Google Drive connection...");
+            try {
+              await initTokenClient();
+              if (localStorage.getItem(CONNECTED_KEY) === "1") {
+                await connectDrive(false);
+              } else {
+                status(el.driveStatus, "Not connected", "neutral");
+                status(el.libraryStatus, "Connect Drive", "neutral");
+              }
+            } catch (error) {
+              status(el.driveStatus, "Reconnect required", "warn");
+              status(el.libraryStatus, "Connect Drive", "neutral");
+              note(`Silent Drive connection was not available: ${msg(error)}`);
+            }
+          }
+          '''
+          new = '''async function boot() {
+            note("Initializing Google Drive connection...");
+            try {
+              restoreCachedToken();
+              await initTokenClient();
+              if (state.token || localStorage.getItem(CONNECTED_KEY) === "1") {
+                await connectDrive(false);
+              } else {
+                status(el.driveStatus, "Not connected", "neutral");
+                status(el.libraryStatus, "Connect Drive", "neutral");
+              }
+            } catch (error) {
+              status(el.driveStatus, "Reconnect required", "warn");
+              status(el.libraryStatus, "Connect Drive", "neutral");
+              note(`Drive access needs a click to reconnect: ${msg(error)}`);
+            }
+          }
+          '''
+          if old not in s:
+              raise SystemExit("boot block not found")
+          s = s.replace(old, new)
+
+          old = '''async function authorize(interactive = false) {
+            if (state.token && Date.now() < state.tokenExpiresAt - 60_000) return state.token;
+            await initTokenClient();
+          '''
+          new = '''async function authorize(interactive = false) {
+            if (!state.token) restoreCachedToken();
+            if (state.token && Date.now() < state.tokenExpiresAt - TOKEN_MARGIN_MS) return state.token;
+            await initTokenClient();
+          '''
+          if old not in s:
+              raise SystemExit("authorize block not found")
+          s = s.replace(old, new)
+
+          old = '''  state.token = response.access_token;
+            state.tokenExpiresAt = Date.now() + Math.max(60, Number(response.expires_in || 3600)) * 1000;
+            localStorage.setItem(CONNECTED_KEY, "1");
+            scheduleTokenRefresh();
+          '''
+          new = '''  state.token = response.access_token;
+            state.tokenExpiresAt = Date.now() + Math.max(60, Number(response.expires_in || 3600)) * 1000;
+            localStorage.setItem(CONNECTED_KEY, "1");
+            cacheToken(response);
+            scheduleTokenExpiry();
+          '''
+          if old not in s:
+              raise SystemExit("token response block not found")
+          s = s.replace(old, new)
+
+          start = s.index("function scheduleTokenRefresh() {")
+          end = s.index("\nasync function waitGoogle()", start)
+          token_helpers = '''function cacheToken(response) {
+            localStorage.setItem(TOKEN_KEY, JSON.stringify({
+              accessToken: response.access_token,
+              expiresAt: state.tokenExpiresAt,
+              scope: response.scope || SCOPE,
+            }));
+          }
+
+          function restoreCachedToken() {
+            try {
+              const cached = JSON.parse(localStorage.getItem(TOKEN_KEY) || "null");
+              if (!cached?.accessToken || !Number.isFinite(cached.expiresAt)) return false;
+              if (Date.now() >= cached.expiresAt - TOKEN_MARGIN_MS) {
+                clearCachedToken();
+                return false;
+              }
+              state.token = cached.accessToken;
+              state.tokenExpiresAt = cached.expiresAt;
+              scheduleTokenExpiry();
+              return true;
+            } catch {
+              clearCachedToken();
+              return false;
+            }
+          }
+
+          function clearCachedToken() {
+            localStorage.removeItem(TOKEN_KEY);
+          }
+
+          function scheduleTokenExpiry() {
+            clearTimeout(state.refreshTimer);
+            const delay = Math.max(1_000, state.tokenExpiresAt - Date.now() - TOKEN_MARGIN_MS);
+            state.refreshTimer = setTimeout(() => {
+              state.token = null;
+              state.tokenExpiresAt = 0;
+              clearCachedToken();
+              status(el.driveStatus, "Reconnect required", "warn");
+              status(el.libraryStatus, "Click Refresh", "warn");
+              note("The cached Google Drive token expired. Click Refresh to reconnect.");
+            }, delay);
+          }
+          '''
+          s = s[:start] + token_helpers + s[end:]
+
+          start = s.index("function renderLibrary(activities) {")
+          end = s.index("\nfunction isChatGptUrl(value)", start)
+          library = '''function renderLibrary(activities) {
+            if (!activities.length) {
+              el.activityList.innerHTML = '<p class="empty-state">No uploaded activities found yet.</p>';
+              return;
+            }
+
+            el.activityList.innerHTML = activities.map((activity) => {
+              const manifest = activity.manifest || {};
+              const started = manifest.startTime ? new Date(manifest.startTime) : null;
+              const when = started && !Number.isNaN(started.getTime()) ? started.toLocaleString() : activity.folderName;
+              const sport = [manifest.sport, manifest.subSport].filter(Boolean).join(" / ") || "activity";
+              const reviewed = Boolean(manifest.reviewed || manifest.chatUrl);
+              const chatUrl = manifest.chatUrl || "";
+
+              return `<article class="activity-row ${reviewed ? "reviewed" : "uploaded"}" data-folder-id="${html(activity.folderId)}" tabindex="0" aria-expanded="false">
+                <div class="activity-row-label">
+                  <span class="activity-kicker">${html(sport)}</span>
+                  <span class="activity-when">${html(when)}</span>
+                </div>
+                <div class="activity-links">
+                  <a href="${html(activity.driveUrl)}" target="_blank" rel="noopener">Drive</a>
+                  ${chatUrl
+                    ? `<a href="${html(chatUrl)}" target="_blank" rel="noopener">ChatGPT</a>`
+                    : '<button type="button" class="text-link" data-expand-review>ChatGPT</button>'}
+                </div>
+                <div class="review-editor">
+                  <label class="review-check"><input type="checkbox" data-review-check ${reviewed ? "checked" : ""}/> Reviewed</label>
+                  <input type="text" data-chat-url value="${html(chatUrl)}" placeholder="Paste ChatGPT conversation URL" autocomplete="off" spellcheck="false" />
+                  <button type="button" class="secondary small" data-save-review>Save</button>
+                </div>
+              </article>`;
+            }).join("");
+          }
+
+          async function handleLibraryClick(event) {
+            const saveButton = event.target.closest("[data-save-review]");
+            if (saveButton) {
+              await saveReview(saveButton);
+              return;
+            }
+
+            const row = event.target.closest("[data-folder-id]");
+            if (!row || event.target.closest("a, input, label")) return;
+            toggleReviewEditor(row);
+          }
+
+          function handleLibraryKeydown(event) {
+            if (!["Enter", " "].includes(event.key)) return;
+            if (event.target.closest("a, button, input")) return;
+            const row = event.target.closest("[data-folder-id]");
+            if (!row) return;
+            event.preventDefault();
+            toggleReviewEditor(row);
+          }
+
+          function toggleReviewEditor(row) {
+            const expanded = row.classList.toggle("expanded");
+            row.setAttribute("aria-expanded", String(expanded));
+            if (expanded) row.querySelector("[data-chat-url]")?.focus();
+          }
+
+          async function saveReview(button) {
+            const card = button.closest("[data-folder-id]");
+            const folderId = card?.dataset.folderId;
+            const activity = state.activities.find((item) => item.folderId === folderId);
+            if (!activity) return;
+
+            const url = card.querySelector("[data-chat-url]").value.trim();
+            const reviewed = card.querySelector("[data-review-check]").checked || Boolean(url);
+            if (url && !isChatGptUrl(url)) {
+              note("Please paste a valid https://chatgpt.com conversation URL.");
+              card.querySelector("[data-chat-url]").focus();
+              return;
+            }
+
+            button.disabled = true;
+            button.textContent = "Saving...";
+            try {
+              const now = new Date().toISOString();
+              const manifest = {
+                ...activity.manifest,
+                folderId: activity.folderId,
+                folderName: activity.folderName,
+                reviewed,
+                reviewedAt: reviewed ? (activity.manifest?.reviewedAt || now) : null,
+                chatUrl: url || null,
+                updatedAt: now,
+              };
+              const blob = jsonBlob(manifest);
+              if (activity.manifestFileId) {
+                await updateFileMedia(activity.manifestFileId, blob, "application/json");
+              } else {
+                const file = await uploadFile(MANIFEST_NAME, blob, "application/json", activity.folderId, "activity-manifest");
+                activity.manifestFileId = file.id;
+              }
+              activity.manifest = manifest;
+              renderLibrary(state.activities);
+              status(el.libraryStatus, `${state.activities.length} ${state.activities.length === 1 ? "activity" : "activities"}`, "good");
+              note(`Saved review metadata for ${activity.folderName}.`);
+            } catch (error) {
+              fail(error);
+              button.disabled = false;
+              button.textContent = "Save";
+            }
+          }
+          '''
+          s = s[:start] + library + s[end:]
+
+          old = '''  if (response.status === 401 && !retried) {
+              state.token = null;
+              state.tokenExpiresAt = 0;
+              await authorize(false);
+          '''
+          new = '''  if (response.status === 401 && !retried) {
+              state.token = null;
+              state.tokenExpiresAt = 0;
+              clearCachedToken();
+              await authorize(false);
+          '''
+          if old not in s:
+              raise SystemExit("401 block not found")
+          s = s.replace(old, new)
+          app.write_text(s)
+
+          css = Path("styles.css")
+          marker = "/* Compact activity library */"
+          compact_css = '''
+
+          /* Compact activity library */
+          .activity-list{display:block;max-height:320px;overflow-y:auto;overscroll-behavior:contain;border:1px solid #dfe6ea;border-radius:12px;background:#fff}.activity-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px 16px;padding:10px 12px;border-bottom:1px solid #e7ecef;background:transparent;cursor:pointer}.activity-row:last-child{border-bottom:0}.activity-row:hover,.activity-row:focus-visible,.activity-row.expanded{background:#f5f9fa}.activity-row:focus-visible{outline:2px solid #167384;outline-offset:-2px}.activity-row-label{display:flex;align-items:baseline;gap:10px;min-width:0}.activity-kicker{flex:0 0 auto;margin:0;color:#0b6876;font-size:.68rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.activity-when{min-width:0;font-size:.94rem;font-weight:760;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.activity-links{display:flex;align-items:center;justify-content:flex-end;gap:12px;white-space:nowrap}.activity-links a,.text-link{padding:0;border:0;background:transparent;color:#0c6675;font-size:.84rem;font-weight:800;text-decoration:underline;cursor:pointer}.review-editor{display:none;grid-column:1/-1;grid-template-columns:auto minmax(220px,1fr) auto;align-items:center;gap:10px;padding:10px 0 2px;border-top:1px solid #e1e8eb}.activity-row.expanded .review-editor{display:grid}.review-editor label{margin:0}.review-editor input[type=text]{min-width:0}.empty-state{margin:0;padding:16px;color:#687785}.library-toolbar{align-items:center}@media(max-width:680px){.activity-row{gap:7px 10px}.activity-row-label{display:block}.activity-when{display:block;margin-top:2px}.review-editor{grid-template-columns:1fr}}
+          '''
+          css_text = css.read_text()
+          if marker not in css_text:
+              css.write_text(css_text + compact_css)
+
+          index = Path("index.html")
+          html = index.read_text()
+          html = html.replace('./styles.css?v=20260729-1608', './styles.css?v=20260729-1625')
+          html = html.replace('./styles.css"', './styles.css?v=20260729-1625"')
+          html = html.replace(
+              'The Google OAuth client ID is built into the app. After the first authorization, the app remembers that Drive was connected and attempts to restore access silently on later visits.',
+              'The Google OAuth client ID is built into the app. The current short-lived Drive token is cached in this browser and restored automatically until it expires.',
+          )
+          html = html.replace(
+              'Access tokens are kept only in page memory. The app stores a small local “previously connected” marker, then asks Google for a fresh short-lived token without showing the login screen when possible.',
+              'No Google password or refresh token is stored. When the short-lived token expires, click Connect Drive or Refresh to obtain a new one.',
+          )
+          html = html.replace(
+              'After discussing an activity in ChatGPT, copy the conversation URL from your browser and save it here. The app cannot discover the current ChatGPT URL automatically.',
+              'One activity appears per row. Click a row to add or edit its ChatGPT conversation link.',
+          )
+          html = html.replace('./app.js?v=20260729-1608', './app.js?v=20260729-1625')
+          html = html.replace('./app.js"', './app.js?v=20260729-1625"')
+          index.write_text(html)
+          PY
+
+          node --check app.js
+          rm .github/workflows/apply-compact-library.yml
+
+      - name: Commit update
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js styles.css index.html .github/workflows/apply-compact-library.yml
+          git commit -m "Cache Drive token and compact activity library"
+          git push origin HEAD:main
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
