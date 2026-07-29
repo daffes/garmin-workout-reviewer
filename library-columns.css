@@ -1,7 +1,7 @@
 .activity-table-head,
 .activity-row {
-  grid-template-columns: 92px 58px 96px minmax(90px, 1fr) 78px 72px 92px;
-  column-gap: 10px;
+  grid-template-columns: 92px 42px 52px 94px 82px 76px 70px minmax(150px, 1fr);
+  column-gap: 8px;
 }
 
 .activity-table-head {
@@ -15,6 +15,7 @@
 }
 
 .activity-date,
+.activity-day,
 .activity-time,
 .activity-distance,
 .activity-duration {
@@ -25,6 +26,12 @@
 .activity-time {
   font: 700 .76rem ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #40515d;
+}
+
+.activity-day {
+  color: #667681;
+  font-size: .74rem;
+  font-weight: 760;
 }
 
 .activity-distance,
@@ -41,8 +48,9 @@
 }
 
 .activity-links {
-  width: 92px;
-  min-width: 92px;
+  width: auto;
+  min-width: 0;
+  gap: 9px;
 }
 
 .review-editor {
@@ -61,8 +69,8 @@
 
   .activity-table-head,
   .activity-row {
-    min-width: 680px;
-    grid-template-columns: 92px 58px 96px 100px 78px 72px 92px;
+    min-width: 780px;
+    grid-template-columns: 92px 42px 52px 94px 82px 76px 70px minmax(150px, 1fr);
   }
 
   .activity-list {
