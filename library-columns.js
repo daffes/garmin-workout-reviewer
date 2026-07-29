@@ -4,7 +4,7 @@ const TOKEN_KEY = "gwr.drive.access-token.v1";
 const PROJECT_URL = "https://chatgpt.com/g/g-p-6a5f5d0e62c08191ad5f73463e7a4e64-iron-man-haines-city/project";
 
 if (header) {
-  header.innerHTML = ["Date", "Time", "ID", "Sport", "Distance", "Duration", "Links"]
+  header.innerHTML = ["Date", "Day", "Time", "ID", "Sport", "Distance", "Duration", "Links"]
     .map((label) => `<span>${label}</span>`)
     .join("");
 }
@@ -14,6 +14,7 @@ if (list) {
   new MutationObserver(normalizeRows).observe(list, { childList: true });
 }
 
+window.addEventListener("gwr-manifest-available", () => decorateGarminLinks());
 document.addEventListener("click", handleStartReviewCapture, true);
 
 function handleStartReviewCapture(event) {
@@ -62,9 +63,11 @@ function buildReviewPrompt(referenceId, driveUrl) {
     "1. Treat the GWR-* value as an internal Garmin Workout Reviewer activity ID, not as a public Garmin, Strava, Instagram, or web code.",
     "2. Do not search the web or File Library for this ID.",
     "3. Use the Google Drive connector and open the exact activity-folder URL above.",
-    "4. Read activity-manifest.json, athlete-notes.md, and the *.analysis.json file in that folder. Use *.decoded-full.json only when the analysis file lacks a needed detail.",
-    "5. Apply my reusable Ironman workout-review method and evaluate execution, physiology, technique, relation to my current benchmarks, and the next training decision.",
-    "6. Do not ask me to upload the activity again unless the Drive folder genuinely cannot be opened.",
+    "4. Read activity-manifest.json, athlete-notes.md, and review-summary.json first.",
+    "5. Complete the initial review from those compact files whenever possible. Do not read or process decoded-full JSON or raw GPS records unless a specific unanswered question requires second-by-second detail.",
+    "6. For older activity folders without review-summary.json, use the *.analysis.json file, but avoid decoded-full JSON unless necessary.",
+    "7. Apply my reusable Ironman workout-review method and evaluate execution, physiology, technique, relation to my current benchmarks, and the next training decision.",
+    "8. Do not ask me to upload the activity again unless the Drive folder genuinely cannot be opened.",
   ].join("\n");
 }
 
@@ -86,6 +89,10 @@ function normalizeRows() {
     dateCell.className = "activity-date";
     dateCell.textContent = Number.isNaN(parsed.getTime()) ? "—" : formatDate(parsed);
 
+    const dayCell = document.createElement("span");
+    dayCell.className = "activity-day";
+    dayCell.textContent = Number.isNaN(parsed.getTime()) ? "—" : formatDay(parsed);
+
     const timeCell = document.createElement("time");
     timeCell.className = "activity-time";
     timeCell.dateTime = start;
@@ -102,6 +109,7 @@ function normalizeRows() {
     durationCell.className = "activity-duration";
     durationCell.textContent = duration;
 
+    row.insertBefore(dayCell, summary);
     row.insertBefore(timeCell, summary);
     if (reference) row.insertBefore(reference, summary);
     if (sport) row.insertBefore(sport, summary);
@@ -109,8 +117,58 @@ function normalizeRows() {
     row.insertBefore(durationCell, summary);
     summary.remove();
 
+    decorateGarminLink(row);
     if (distance === "—" || duration === "—") backfillMetrics(row).catch(() => {});
   }
+
+  decorateGarminLinks();
+}
+
+function decorateGarminLinks() {
+  if (!list) return;
+  for (const row of list.querySelectorAll(":scope > .activity-row")) decorateGarminLink(row);
+}
+
+function decorateGarminLink(row) {
+  const links = row.querySelector(".activity-links");
+  if (!links || links.querySelector("[data-garmin-link]")) return;
+
+  const manifest = window.__gwrManifestsByFolder instanceof Map
+    ? window.__gwrManifestsByFolder.get(row.dataset.folderId)
+    : null;
+  const activityId = garminActivityId(manifest);
+  if (!activityId) return;
+
+  row.dataset.garminActivityId = activityId;
+  const link = document.createElement("a");
+  link.href = `https://connect.garmin.com/app/activity/${activityId}`;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.textContent = "Garmin";
+  link.dataset.garminLink = activityId;
+  link.title = `Open Garmin Connect activity ${activityId}`;
+  links.prepend(link);
+}
+
+function garminActivityId(manifest) {
+  if (!manifest) return null;
+  const candidates = [
+    manifest.garminActivityId,
+    manifest.activityId,
+    manifest.source?.fitFileName,
+    manifest.source?.extractedFitFileName,
+    manifest.source?.fileName,
+    manifest.folderName,
+  ];
+
+  for (const candidate of candidates) {
+    const text = String(candidate || "");
+    const exact = text.match(/^\d{8,16}$/);
+    if (exact) return exact[0];
+    const embedded = text.match(/(?:^|\D)(\d{8,16})(?=\D|$)/);
+    if (embedded) return embedded[1];
+  }
+  return null;
 }
 
 async function backfillMetrics(row) {
@@ -125,7 +183,10 @@ async function backfillMetrics(row) {
   const url = `https://www.googleapis.com/drive/v3/files?spaces=drive&pageSize=50&fields=${encodeURIComponent("files(id,name,appProperties)")}&q=${encodeURIComponent(query)}`;
   const files = await driveJson(url, token);
   const analysisFile = (files.files || []).find((file) =>
-    file.appProperties?.artifactType === "analysis-json" || /\.analysis\.json$/i.test(file.name),
+    file.appProperties?.artifactType === "review-summary-json"
+      || file.appProperties?.artifactType === "analysis-json"
+      || file.name === "review-summary.json"
+      || /\.analysis\.json$/i.test(file.name),
   );
   if (!analysisFile) return;
 
@@ -178,6 +239,10 @@ function formatDate(value) {
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatDay(value) {
+  return value.toLocaleDateString("en-US", { weekday: "short" });
 }
 
 function formatTime(value) {
