@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Parse Garmin FIT files locally in your browser and save the outputs to Google Drive." />
+    <title>Garmin Workout Reviewer</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">IRON MAN TRAINING DATA</p>
+        <h1>Garmin FIT → Google Drive</h1>
+        <p class="lede">Your FIT file is decoded in this browser. The app has no database and no workout data is sent to an application server.</p>
+      </header>
+
+      <section class="panel" aria-labelledby="drive-heading">
+        <div class="section-heading"><div><p class="step">STEP 1</p><h2 id="drive-heading">Connect Google Drive</h2></div><span id="drive-status" class="status neutral">Not connected</span></div>
+        <label for="client-id">Google OAuth web client ID</label>
+        <div class="inline-control"><input id="client-id" type="text" autocomplete="off" spellcheck="false" placeholder="1234567890-abc123.apps.googleusercontent.com" /><button id="connect-drive" class="secondary" type="button">Connect Drive</button></div>
+        <p class="hint">The client ID is not a password. It stays in this browser tab and is used only to request a Google access token.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="fit-heading">
+        <div class="section-heading"><div><p class="step">STEP 2</p><h2 id="fit-heading">Choose and parse a FIT file</h2></div><span id="parse-status" class="status neutral">Waiting for file</span></div>
+        <label class="drop-zone" for="fit-file"><input id="fit-file" type="file" accept=".fit,application/octet-stream" /><span class="drop-title">Choose a Garmin .fit activity</span><span id="file-name" class="drop-detail">No file selected</span></label>
+        <label for="athlete-notes">How did it feel? Optional notes for ChatGPT</label>
+        <textarea id="athlete-notes" rows="5" placeholder="Example: Aimed for 230 W. Challenging but controlled. Harder to hold power uphill. Cadence felt best around 83–86 rpm."></textarea>
+        <button id="parse-fit" class="primary" type="button" disabled>Parse FIT file</button>
+      </section>
+
+      <section id="results-panel" class="panel hidden" aria-labelledby="results-heading">
+        <div class="section-heading"><div><p class="step">STEP 3</p><h2 id="results-heading">Review the extraction</h2></div><span id="integrity-status" class="status neutral">Integrity unknown</span></div>
+        <div id="summary-grid" class="summary-grid"></div>
+        <details><summary>Decoded message groups</summary><pre id="message-groups"></pre></details>
+        <div class="button-row"><button id="download-analysis" class="secondary" type="button">Download analysis JSON</button><button id="download-full" class="secondary" type="button">Download full decoded JSON</button></div>
+      </section>
+
+      <section id="save-panel" class="panel hidden" aria-labelledby="save-heading">
+        <div class="section-heading"><div><p class="step">STEP 4</p><h2 id="save-heading">Save the activity to Drive</h2></div><span id="upload-status" class="status neutral">Ready</span></div>
+        <p>The app will create an app-managed <strong>Iron Man Training Data</strong> folder and an activity subfolder containing the original FIT, analysis-ready JSON, full decoded JSON, and your notes.</p>
+        <button id="upload-drive" class="primary" type="button">Upload package to Drive</button><p id="drive-result" class="result-link"></p>
+      </section>
+
+      <section class="panel log-panel" aria-labelledby="log-heading"><div class="section-heading compact"><h2 id="log-heading">Activity log</h2><button id="clear-log" class="text-button" type="button">Clear</button></div><pre id="log">Ready.</pre></section>
+      <footer><p>FIT decoding uses Garmin's official JavaScript FIT SDK. Google access uses the narrow <code>drive.file</code> scope.</p></footer>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
