@@ -1,9 +1,10 @@
-import { installGoogleTokenCache } from "./auth-cache.js?v=20260729-1637";
+import { installGoogleTokenCache } from "./auth-cache.js?v=20260729-1639";
 
 await loadGoogleIdentityServices();
 installGoogleTokenCache();
-await import("./app.js?v=20260729-1637");
-await import("./library-ui.js?v=20260729-1637");
+await import("./app.js?v=20260729-1639");
+await import("./library-ui.js?v=20260729-1639");
+await import("./activity-reference.js?v=20260729-1639");
 
 function loadGoogleIdentityServices() {
   if (window.google?.accounts?.oauth2) return Promise.resolve();
