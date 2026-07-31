@@ -1,3 +1,5 @@
+import { buildGradeAdjustedPaceReport } from "./gap.js?v=20260731-1201";
+
 const PROJECT_URL = "https://chatgpt.com/g/g-p-6a5f5d0e62c08191ad5f73463e7a4e64-iron-man-haines-city/project";
 const REVIEW_FILE_NAME = "review-summary.json";
 const BUCKET_SECONDS = 30;
@@ -120,12 +122,16 @@ function buildReviewSummary(analysis) {
   const records = Array.isArray(analysis.records) ? analysis.records : [];
   const sessions = Array.isArray(analysis.sessions) ? analysis.sessions : [];
   const laps = Array.isArray(analysis.laps) ? analysis.laps : [];
-  const timeSeries = bucketRecords(records, BUCKET_SECONDS);
+  const gapReport = buildGradeAdjustedPaceReport(analysis, BUCKET_SECONDS);
+  const timeSeries = mergeGapIntoTimeSeries(
+    bucketRecords(records, BUCKET_SECONDS),
+    gapReport?.timeSeries || [],
+  );
   const firstHalf = halfMetrics(records, 0, 0.5);
   const secondHalf = halfMetrics(records, 0.5, 1);
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     generatedAt: analysis.generatedAt || new Date().toISOString(),
     purpose: "Compact default input for an Iron Man Haines City workout review",
     source: analysis.source || null,
@@ -154,6 +160,10 @@ function buildReviewSummary(analysis) {
     firstHalf,
     secondHalf,
     drift: compareHalves(firstHalf, secondHalf),
+    gradeAdjustedPace: gapReport ? compactObject({
+      ...gapReport,
+      timeSeries: undefined,
+    }) : null,
     timeSeries: {
       bucketSeconds: BUCKET_SECONDS,
       description: "Thirty-second aggregates without GPS coordinates; use decoded-full JSON only for targeted deep dives.",
@@ -165,6 +175,18 @@ function buildReviewSummary(analysis) {
       availableInDecodedFullJson: true,
     },
   };
+}
+
+function mergeGapIntoTimeSeries(timeSeries, gapTimeSeries) {
+  const gapByElapsedSeconds = new Map(gapTimeSeries.map((sample) => [sample.elapsedSeconds, sample]));
+  return timeSeries.map((sample) => {
+    const gap = gapByElapsedSeconds.get(sample.elapsedSeconds);
+    return gap ? {
+      ...sample,
+      gapSecondsPerKm: gap.gapSecondsPerKm,
+      gapGradeCoveragePercent: gap.gradeCoveragePercent,
+    } : sample;
+  });
 }
 
 function bucketRecords(records, bucketSeconds) {
